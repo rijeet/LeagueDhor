@@ -89,11 +89,25 @@ export default function Home() {
     setLoading(true);
     try {
       const response = await personService.getFeed(1, ITEMS_PER_PAGE);
-      setFeed(response.data);
-      setPage(1);
-      setHasMore(response.pagination.hasMore);
+      // Handle both wrapped and unwrapped responses
+      if (response && response.data && response.pagination) {
+        setFeed(response.data);
+        setPage(1);
+        setHasMore(response.pagination.hasMore);
+      } else if (response && Array.isArray(response)) {
+        // Fallback: if response is just an array
+        setFeed(response);
+        setPage(1);
+        setHasMore(false);
+      } else {
+        console.error('Unexpected response format:', response);
+        setFeed([]);
+        setHasMore(false);
+      }
     } catch (error) {
       console.error('Failed to load feed:', error);
+      setFeed([]);
+      setHasMore(false);
     } finally {
       setLoading(false);
     }
@@ -106,13 +120,25 @@ export default function Home() {
     try {
       const response = await personService.getFeed(page + 1, ITEMS_PER_PAGE);
       
-      // On mobile, react-window will automatically preserve scroll position
-      // because we're appending to the array and the List handles it internally
-      setFeed(prev => [...prev, ...response.data]);
-      setPage(prev => prev + 1);
-      setHasMore(response.pagination.hasMore);
+      // Handle both wrapped and unwrapped responses
+      if (response && response.data && response.pagination) {
+        // On mobile, react-window will automatically preserve scroll position
+        // because we're appending to the array and the List handles it internally
+        setFeed(prev => [...prev, ...response.data]);
+        setPage(prev => prev + 1);
+        setHasMore(response.pagination.hasMore);
+      } else if (response && Array.isArray(response)) {
+        // Fallback: if response is just an array
+        setFeed(prev => [...prev, ...response]);
+        setPage(prev => prev + 1);
+        setHasMore(false);
+      } else {
+        console.error('Unexpected response format:', response);
+        setHasMore(false);
+      }
     } catch (error) {
       console.error('Failed to load more:', error);
+      setHasMore(false);
     } finally {
       setIsLoadingMore(false);
     }
@@ -120,9 +146,10 @@ export default function Home() {
 
   // Extract all unique tags from the feed
   const allTags = useMemo(() => {
+    if (!feed || !Array.isArray(feed)) return [];
     const tagsSet = new Set<string>();
     feed.forEach((item) => {
-      if (item.latestCrime?.tags && Array.isArray(item.latestCrime.tags)) {
+      if (item?.latestCrime?.tags && Array.isArray(item.latestCrime.tags)) {
         item.latestCrime.tags.forEach((tag) => {
           if (tag && tag.trim()) {
             tagsSet.add(tag.trim().toUpperCase());
@@ -135,7 +162,9 @@ export default function Home() {
 
   // Filter feed based on search criteria (client-side filtering)
   const filteredFeed = useMemo(() => {
+    if (!feed || !Array.isArray(feed)) return [];
     return feed.filter((item) => {
+      if (!item || !item.person) return false;
       // Filter by person name
       const nameMatch =
         !searchName ||
